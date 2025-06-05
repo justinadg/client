@@ -1,0 +1,27 @@
+{
+  "status": "Upcoming",
+  "firstName": "kevin",
+  "lastName": "hunt",
+  "contactNumber": "09876543210",
+  "email": "kevin@gmail.com",
+  "serviceCategory": {
+    "$oid": "683c33511b5910006c400fbc"
+  },
+  "serviceType": {
+    "$oid": "683c33d21b5910006c400fdc"
+  },
+  "additionalNotes": "",
+  "userId": {
+    "$oid": "683c32d52092e546c544a82f"
+  },
+  "appointmentDateTime": {
+    "$date": "2025-06-02T00:30:00.000Z"
+  },
+  "createdAt": {
+    "$date": "2025-06-01T12:07:00.000Z"
+  },
+  "updatedAt": {
+    "$date": "2025-06-01T12:07:00.000Z"
+  },
+  "__v": 0
+}
