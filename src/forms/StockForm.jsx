@@ -67,10 +67,13 @@ export default function StockForm({ stockToEdit }) {
       if (stockToEdit) {
         const quantityChange = data.quantity - stockToEdit.quantity;
         
-        // First update the stock with the new values
+        // First update the stock with the new values EXCEPT quantity
         await updateStock({ 
           id: stockToEdit.id, 
-          ...data
+          type: data.type,
+          category: data.category,
+          price: data.price
+          // Don't include quantity here - it will be handled by recordChange
         }).unwrap();
 
         // If quantity changed, record it in history
@@ -171,7 +174,7 @@ export default function StockForm({ stockToEdit }) {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">₱</InputAdornment>
-                  ),
+                  ),//
                 }}
               />
             )}

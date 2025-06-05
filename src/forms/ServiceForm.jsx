@@ -12,6 +12,7 @@ import {
   Select,
   FormControl,
   InputLabel,
+  InputAdornment,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import {
@@ -154,9 +155,16 @@ export default function ServiceForm({ serviceToEdit }) {
                     {...field}
                     label="Price"
                     fullWidth
+                    type="number"
+                    inputProps={{ min: 0, step: "0.01" }}
                     error={!!errors.price}
                     helperText={errors.price?.message}
                     required
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₱</InputAdornment>
+                      ),
+                    }}
                   />
                 )}
               />
