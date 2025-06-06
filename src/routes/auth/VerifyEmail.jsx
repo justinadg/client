@@ -17,7 +17,7 @@ export default function VerifyEmail() {
     setToken(token);
 
     if (token) {
-      verifyEmail({ token })
+      verifyEmail(token) // Just pass the token directly
         .unwrap()
         .then(() => {
           setAlert({
