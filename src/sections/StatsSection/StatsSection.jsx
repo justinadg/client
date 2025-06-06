@@ -1,5 +1,10 @@
 import { Container } from "@mui/material";
-import { Face, ContentCut, InsertEmoticon, History } from "@mui/icons-material";
+import {
+  InsertEmoticon,
+  History,
+  Handyman,
+  ElectricCar
+} from "@mui/icons-material";
 import {
   StatsContainer,
   StatItem,
@@ -14,7 +19,7 @@ export default function StatsSection() {
     <Container maxWidth="lg">
       <StatsContainer>
         <StatItem>
-          <StatIcon as={ContentCut} />
+          <StatIcon as={Handyman} />
           <StatItemInner>
             <StatNumber>10</StatNumber>
             <StatLabel>Skilled Staffs</StatLabel>
@@ -28,7 +33,7 @@ export default function StatsSection() {
           </StatItemInner>
         </StatItem>
         <StatItem>
-          <StatIcon as={Face} />
+          <StatIcon as={ElectricCar} />
           <StatItemInner>
             <StatNumber>30</StatNumber>
             <StatLabel>Unique Services</StatLabel>

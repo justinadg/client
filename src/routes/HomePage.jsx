@@ -1,4 +1,5 @@
 import StaffsSection from "../sections/StaffsSection/StaffsSection";
+import StatsSection from "../sections/StatsSection/StatsSection";
 import BookAppointmentSection from "../sections/BookAppointmentSection/BookAppointmentSection";
 import BookNowCTASection from "../sections/BookNowCTASection/BookNowCTASection";
 import Footer from "../components/Footer/Footer";
@@ -14,6 +15,7 @@ export default function HomePage() {
       <HeroSection />
       <BookNowCTASection />
       <ServicesSection />
+      <StatsSection />
       <StaffsSection />
       <TestimonialsSection />
       <BookAppointmentSection />

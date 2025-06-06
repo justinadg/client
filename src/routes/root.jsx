@@ -1,4 +1,3 @@
-// client/src/routes/root.jsx (modified)
 import { Routes, Route, Outlet, Navigate } from "react-router-dom";
 import HomePage from "./HomePage";
 import AboutUs from "./AboutUs";
