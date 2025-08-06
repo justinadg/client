@@ -8,33 +8,36 @@ export default function VerifyEmail() {
   const location = useLocation();
   const navigate = useNavigate();
   const [verifyEmail, { isLoading, isSuccess, error }] = useVerifyEmailMutation();
+  const [token, setToken] = useState(null);
   const [alert, setAlert] = useState(null);
 
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const token = queryParams.get('token');
-
-    if (token) {
-      verifyEmail({ token }) // Pass as an object
-        .unwrap()
-        .then(() => {
-          setAlert({
-            type: 'success',
-            message: 'Email verified successfully! You can now log in.',
-          });
-        })
-        .catch((err) => {
-          setAlert({
-            type: 'error',
-            message: err.data?.message || 'Failed to verify email. The link may have expired.',
-          });
-        });
-    } else {
+    
+    if (!token) {
       setAlert({
         type: 'error',
         message: 'No verification token found in the URL.',
       });
+      return;
     }
+    
+    setToken(token);
+    verifyEmail(token)
+      .unwrap()
+      .then(() => {
+        setAlert({
+          type: 'success',
+          message: 'Email verified successfully! You can now log in.',
+        });
+      })
+      .catch((err) => {
+        setAlert({
+          type: 'error',
+          message: err.data?.message || 'Failed to verify email. The link may have expired.',
+        });
+      });
   }, [location.search, verifyEmail]);
 
   return (
