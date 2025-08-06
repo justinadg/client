@@ -8,16 +8,14 @@ export default function VerifyEmail() {
   const location = useLocation();
   const navigate = useNavigate();
   const [verifyEmail, { isLoading, isSuccess, error }] = useVerifyEmailMutation();
-  const [token, setToken] = useState(null);
   const [alert, setAlert] = useState(null);
 
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const token = queryParams.get('token');
-    setToken(token);
 
     if (token) {
-      verifyEmail(token) // Just pass the token directly
+      verifyEmail({ token }) // Pass as an object
         .unwrap()
         .then(() => {
           setAlert({
