@@ -37,8 +37,8 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import advancedFormat from 'dayjs/plugin/advancedFormat';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
-import { useFetchAllAppointmentsQuery,  } from '../../services/api/appointmentsApi';
-import { useFetchServiceByIdQuery } from '../../services/api/servicesApi';
+import { useFetchAllAppointmentsQuery } from '../../services/api/appointmentsApi';
+import { useFetchServiceByIdQuery, useFetchServicesQuery } from '../../services/api/servicesApi';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
@@ -47,7 +47,7 @@ dayjs.extend(weekOfYear);
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFA500'];
 
-const calculateStats = (timeRange, customDate, customStartDate, customEndDate, appointments) => {
+const calculateStats = (timeRange, customDate, customStartDate, customEndDate, appointments, services) => {
   let startDate, endDate;
   
   switch (timeRange) {
@@ -86,11 +86,9 @@ const calculateStats = (timeRange, customDate, customStartDate, customEndDate, a
   const serviceDistribution = filteredAppointments.reduce((acc, appointment) => {
     let serviceName = 'Unknown Service';
     
-    // Check if serviceType is populated with title
     if (appointment.serviceType && appointment.serviceType.title) {
       serviceName = appointment.serviceType.title;
     } else if (appointment.serviceType) {
-      // If not populated, we'll show a temporary ID and fetch the actual name later
       serviceName = `Service ID: ${appointment.serviceType}`;
     }
     
@@ -109,6 +107,7 @@ const calculateStats = (timeRange, customDate, customStartDate, customEndDate, a
 
   return {
     total: filteredAppointments.length,
+    totalServices: services.length,
     statusCounts,
     serviceDistribution: serviceDistributionData,
     startDate,
@@ -245,6 +244,11 @@ const generateMetricInsight = (metric, currentValue, comparisonValue, percentage
   return `${metricName} ${direction}d by ${absChange.toFixed(1)}%`;
 };
 
+const ServiceName = ({ serviceId }) => {
+  const { data: service } = useFetchServiceByIdQuery(serviceId);
+  return service ? service.title : `Service ID: ${serviceId}`;
+};
+
 const AppointmentAnalytics = () => {
   const [timeRange, setTimeRange] = useState('day');
   const [customDate, setCustomDate] = useState(dayjs());
@@ -257,10 +261,12 @@ const AppointmentAnalytics = () => {
   const [compareCustomStartDate, setCompareCustomStartDate] = useState(dayjs().subtract(1, 'week').startOf('week'));
   const [compareCustomEndDate, setCompareCustomEndDate] = useState(dayjs().subtract(1, 'week').endOf('week'));
 
-  const { data: allAppointments = { results: [] }, isLoading } = useFetchAllAppointmentsQuery({
+  const { data: allAppointments = { results: [] }, isLoading: isLoadingAppointments } = useFetchAllAppointmentsQuery({
     limit: 10000,
     populate: 'serviceType'
   });
+
+  const { data: services = [], isLoading: isLoadingServices } = useFetchServicesQuery();
 
   const handleTimeRangeChange = (event, newValue) => {
     setTimeRange(newValue);
@@ -270,13 +276,22 @@ const AppointmentAnalytics = () => {
     setCompareTimeRange(newValue);
   };
 
-  const currentStats = calculateStats(timeRange, customDate, customStartDate, customEndDate, allAppointments.results);
-  const chartData = prepareChartData(timeRange, customDate, customStartDate, customEndDate, allAppointments.results);
+  const currentStats = calculateStats(
+    timeRange, 
+    customDate, 
+    customStartDate, 
+    customEndDate, 
+    allAppointments.results,
+    services
+  );
   
-  const ServiceName = ({ serviceId }) => {
-    const { data: service } = useFetchServiceByIdQuery(serviceId);
-    return service ? service.title : `Service ID: ${serviceId}`;
-  };
+  const chartData = prepareChartData(
+    timeRange, 
+    customDate, 
+    customStartDate, 
+    customEndDate, 
+    allAppointments.results
+  );
 
   // Calculate comparison stats
   const comparisonStats = calculateStats(
@@ -284,7 +299,8 @@ const AppointmentAnalytics = () => {
     compareCustomDate, 
     compareCustomStartDate, 
     compareCustomEndDate, 
-    allAppointments.results
+    allAppointments.results,
+    services
   );
 
   // Calculate percentage changes
@@ -295,6 +311,7 @@ const AppointmentAnalytics = () => {
 
   const percentageChanges = {
     total: calculateChange(currentStats.total, comparisonStats.total),
+    totalServices: calculateChange(currentStats.totalServices, comparisonStats.totalServices),
     completed: calculateChange(
       currentStats.statusCounts['Completed'] || 0,
       comparisonStats.statusCounts['Completed'] || 0
@@ -312,12 +329,13 @@ const AppointmentAnalytics = () => {
   // Generate insights for each metric
   const metricInsights = {
     total: generateMetricInsight('total', currentStats.total, comparisonStats.total, percentageChanges.total),
+    totalServices: generateMetricInsight('totalServices', currentStats.totalServices, comparisonStats.totalServices, percentageChanges.totalServices),
     completed: generateMetricInsight('completed', currentStats.statusCounts['Completed'] || 0, comparisonStats.statusCounts['Completed'] || 0, percentageChanges.completed),
     noArrival: generateMetricInsight('noArrival', currentStats.statusCounts['No Arrival'] || 0, comparisonStats.statusCounts['No Arrival'] || 0, percentageChanges.noArrival),
     cancelled: generateMetricInsight('cancelled', currentStats.statusCounts['Cancelled'] || 0, comparisonStats.statusCounts['Cancelled'] || 0, percentageChanges.cancelled),
   };
 
-  if (isLoading) {
+  if (isLoadingAppointments || isLoadingServices) {
     return <CircularProgress disableShrink />;
   }
 
@@ -406,6 +424,19 @@ const AppointmentAnalytics = () => {
             </Paper>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
+            <Paper elevation={3} sx={{ p: 3, height: '100%' }}>
+              <Typography variant="h6" color="text.secondary">
+                Total Services
+              </Typography>
+              <Typography variant="h3" sx={{ mt: 1 }}>
+                {currentStats.totalServices}
+              </Typography>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>
+                Available services
+              </Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
             <Paper elevation={3} sx={{ p: 3, textAlign: 'center', height: '100%' }}>
               <Typography variant="h6" color="text.secondary">
                 Completed
@@ -428,19 +459,6 @@ const AppointmentAnalytics = () => {
               </Typography>
               <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>
                 {Math.round(((currentStats.statusCounts['Cancelled'] || 0) / currentStats.total) * 100)}% of total
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper elevation={3} sx={{ p: 3, textAlign: 'center', height: '100%' }}>
-              <Typography variant="h6" color="text.secondary">
-                No Arrival
-              </Typography>
-              <Typography variant="h3" sx={{ mt: 1 }}>
-                {currentStats.statusCounts['No Arrival'] || 0}
-              </Typography>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>
-                {Math.round(((currentStats.statusCounts['No Arrival'] || 0) / currentStats.total) * 100)}% of total
               </Typography>
             </Paper>
           </Grid>
@@ -477,6 +495,7 @@ const AppointmentAnalytics = () => {
           </ResponsiveContainer>
         </Paper>
 
+        {/* Service Distribution Pie Chart */}
         <Paper elevation={3} sx={{ p: 3, mb: 4, height: 400 }}>
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Service Distribution
@@ -493,7 +512,6 @@ const AppointmentAnalytics = () => {
                   fill="#8884d8"
                   dataKey="value"
                   label={({ name, percentage }) => {
-                    // If name starts with "Service ID:", fetch the actual service name
                     if (name.startsWith('Service ID: ')) {
                       const serviceId = name.replace('Service ID: ', '');
                       return <ServiceName serviceId={serviceId} />;
@@ -616,6 +634,15 @@ const AppointmentAnalytics = () => {
                   <TableCell>{metricInsights.total}</TableCell>
                 </TableRow>
                 <TableRow>
+                  <TableCell>Total Services</TableCell>
+                  <TableCell>{currentStats.totalServices}</TableCell>
+                  <TableCell>{comparisonStats.totalServices}</TableCell>
+                  <TableCell sx={{ color: percentageChanges.totalServices >= 0 ? 'success.main' : 'error.main' }}>
+                    {percentageChanges.totalServices.toFixed(1)}%
+                  </TableCell>
+                  <TableCell>{metricInsights.totalServices}</TableCell>
+                </TableRow>
+                <TableRow>
                   <TableCell>Completed</TableCell>
                   <TableCell>{currentStats.statusCounts['Completed'] || 0}</TableCell>
                   <TableCell>{comparisonStats.statusCounts['Completed'] || 0}</TableCell>
@@ -632,15 +659,6 @@ const AppointmentAnalytics = () => {
                     {percentageChanges.noArrival.toFixed(1)}%
                   </TableCell>
                   <TableCell>{metricInsights.noArrival}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Cancelled</TableCell>
-                  <TableCell>{currentStats.statusCounts['Cancelled'] || 0}</TableCell>
-                  <TableCell>{comparisonStats.statusCounts['Cancelled'] || 0}</TableCell>
-                  <TableCell sx={{ color: percentageChanges.cancelled >= 0 ? 'error.main' : 'success.main' }}>
-                    {percentageChanges.cancelled.toFixed(1)}%
-                  </TableCell>
-                  <TableCell>{metricInsights.cancelled}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
