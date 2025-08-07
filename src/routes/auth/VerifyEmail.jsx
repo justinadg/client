@@ -24,7 +24,7 @@ export default function VerifyEmail() {
     }
     
     setToken(token);
-    verifyEmail(token)
+    verifyEmail({ token }) // Send as body instead of query
       .unwrap()
       .then(() => {
         setAlert({
@@ -39,6 +39,7 @@ export default function VerifyEmail() {
         });
       });
   }, [location.search, verifyEmail]);
+
 
   return (
     <Container component="main" maxWidth="xs">
