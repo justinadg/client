@@ -24,7 +24,7 @@ export default function VerifyEmail() {
     }
     
     setToken(token);
-    verifyEmail({ token }) // Pass as an object
+    verifyEmail(token)
       .unwrap()
       .then(() => {
         setAlert({

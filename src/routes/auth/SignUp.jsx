@@ -97,7 +97,7 @@ export default function SignUp() {
     if (updatedUser) {
       setAlert({ 
         type: "success", 
-        message: "Verification link has been sent! Check your spam",
+        message: "Verification link has been sent! Check your inbox",
       });
       setTimeout(() => {
         navigate("/login");
