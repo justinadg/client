@@ -90,9 +90,10 @@ const calculateStats = (timeRange, customDate, customStartDate, customEndDate, a
     if (appointment.serviceType && appointment.serviceType.title) {
       serviceName = appointment.serviceType.title;
     } else if (appointment.serviceType) {
-      // If not populated, we'll show a temporary ID and fetch the actual name later
+      // If not populated, use the ID (shouldn't happen since we're populating)
       serviceName = `Service ID: ${appointment.serviceType}`;
     }
+    
     
     acc[serviceName] = (acc[serviceName] || 0) + 1;
     return acc;
@@ -259,7 +260,7 @@ const AppointmentAnalytics = () => {
 
   const { data: allAppointments = { results: [] }, isLoading } = useFetchAllAppointmentsQuery({
     limit: 10000,
-    populate: 'serviceType'
+    populate: 'serviceType,serviceType.category'
   });
 
   const handleTimeRangeChange = (event, newValue) => {
@@ -273,11 +274,6 @@ const AppointmentAnalytics = () => {
   const currentStats = calculateStats(timeRange, customDate, customStartDate, customEndDate, allAppointments.results);
   const chartData = prepareChartData(timeRange, customDate, customStartDate, customEndDate, allAppointments.results);
   
-  const ServiceName = ({ serviceId }) => {
-    const { data: service } = useFetchServiceByIdQuery(serviceId);
-    return service ? service.title : `Service ID: ${serviceId}`;
-  };
-
   // Calculate comparison stats
   const comparisonStats = calculateStats(
     compareTimeRange, 
@@ -492,14 +488,7 @@ const AppointmentAnalytics = () => {
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
-                  label={({ name, percentage }) => {
-                    // If name starts with "Service ID:", fetch the actual service name
-                    if (name.startsWith('Service ID: ')) {
-                      const serviceId = name.replace('Service ID: ', '');
-                      return <ServiceName serviceId={serviceId} />;
-                    }
-                    return `${name} (${percentage}%)`;
-                  }}
+                  label={({ name, percentage }) => `${name} (${percentage}%)`}
                 >
                   {currentStats.serviceDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
