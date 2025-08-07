@@ -14,6 +14,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Chip,
 } from '@mui/material';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -37,7 +43,7 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import advancedFormat from 'dayjs/plugin/advancedFormat';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
-import { useFetchAllAppointmentsQuery,  } from '../../services/api/appointmentsApi';
+import { useFetchAllAppointmentsQuery } from '../../services/api/appointmentsApi';
 import { useFetchServiceByIdQuery } from '../../services/api/servicesApi';
 
 dayjs.extend(isSameOrAfter);
@@ -86,11 +92,9 @@ const calculateStats = (timeRange, customDate, customStartDate, customEndDate, a
   const serviceDistribution = filteredAppointments.reduce((acc, appointment) => {
     let serviceName = 'Unknown Service';
     
-    // Check if serviceType is populated with title
     if (appointment.serviceType && appointment.serviceType.title) {
       serviceName = appointment.serviceType.title;
     } else if (appointment.serviceType) {
-      // If not populated, we'll show a temporary ID and fetch the actual name later
       serviceName = `Service ID: ${appointment.serviceType}`;
     }
     
@@ -112,7 +116,8 @@ const calculateStats = (timeRange, customDate, customStartDate, customEndDate, a
     statusCounts,
     serviceDistribution: serviceDistributionData,
     startDate,
-    endDate
+    endDate,
+    filteredAppointments // Added to access appointments for the clicked bar
   };
 };
 
@@ -137,6 +142,9 @@ const prepareChartData = (timeRange, customDate, customStartDate, customEndDate,
         data.push({
           name: hourStart.format('h A'),
           Appointments: hourAppointments.length,
+          appointments: hourAppointments, // Store appointments for this hour
+          start: hourStart,
+          end: hourEnd
         });
       }
       break;
@@ -154,6 +162,9 @@ const prepareChartData = (timeRange, customDate, customStartDate, customEndDate,
         data.push({
           name: currentDate.format('ddd'),
           Appointments: dayAppointments.length,
+          appointments: dayAppointments, // Store appointments for this day
+          start: currentDate.startOf('day'),
+          end: currentDate.endOf('day')
         });
         
         currentDate = currentDate.add(1, 'day');
@@ -176,6 +187,9 @@ const prepareChartData = (timeRange, customDate, customStartDate, customEndDate,
         data.push({
           name: `Week ${week + 1}`,
           Appointments: weekAppointments.length,
+          appointments: weekAppointments, // Store appointments for this week
+          start: weekStart,
+          end: weekEnd
         });
       }
       break;
@@ -195,6 +209,9 @@ const prepareChartData = (timeRange, customDate, customStartDate, customEndDate,
         data.push({
           name: monthStart.format('MMM'),
           Appointments: monthAppointments.length,
+          appointments: monthAppointments, // Store appointments for this month
+          start: monthStart,
+          end: monthEnd
         });
       }
       break;
@@ -245,6 +262,11 @@ const generateMetricInsight = (metric, currentValue, comparisonValue, percentage
   return `${metricName} ${direction}d by ${absChange.toFixed(1)}%`;
 };
 
+const ServiceName = ({ serviceId }) => {
+  const { data: service } = useFetchServiceByIdQuery(serviceId);
+  return service ? service.title : `Service ID: ${serviceId}`;
+};
+
 const AppointmentAnalytics = () => {
   const [timeRange, setTimeRange] = useState('day');
   const [customDate, setCustomDate] = useState(dayjs());
@@ -256,6 +278,10 @@ const AppointmentAnalytics = () => {
   const [compareCustomDate, setCompareCustomDate] = useState(dayjs().subtract(1, 'day'));
   const [compareCustomStartDate, setCompareCustomStartDate] = useState(dayjs().subtract(1, 'week').startOf('week'));
   const [compareCustomEndDate, setCompareCustomEndDate] = useState(dayjs().subtract(1, 'week').endOf('week'));
+
+  // Modal state for bar click
+  const [selectedBarData, setSelectedBarData] = useState(null);
+  const [openBarDetails, setOpenBarDetails] = useState(false);
 
   const { data: allAppointments = { results: [] }, isLoading } = useFetchAllAppointmentsQuery({
     limit: 10000,
@@ -273,11 +299,6 @@ const AppointmentAnalytics = () => {
   const currentStats = calculateStats(timeRange, customDate, customStartDate, customEndDate, allAppointments.results);
   const chartData = prepareChartData(timeRange, customDate, customStartDate, customEndDate, allAppointments.results);
   
-  const ServiceName = ({ serviceId }) => {
-    const { data: service } = useFetchServiceByIdQuery(serviceId);
-    return service ? service.title : `Service ID: ${serviceId}`;
-  };
-
   // Calculate comparison stats
   const comparisonStats = calculateStats(
     compareTimeRange, 
@@ -315,6 +336,41 @@ const AppointmentAnalytics = () => {
     completed: generateMetricInsight('completed', currentStats.statusCounts['Completed'] || 0, comparisonStats.statusCounts['Completed'] || 0, percentageChanges.completed),
     noArrival: generateMetricInsight('noArrival', currentStats.statusCounts['No Arrival'] || 0, comparisonStats.statusCounts['No Arrival'] || 0, percentageChanges.noArrival),
     cancelled: generateMetricInsight('cancelled', currentStats.statusCounts['Cancelled'] || 0, comparisonStats.statusCounts['Cancelled'] || 0, percentageChanges.cancelled),
+  };
+
+  // Handle bar click
+  const handleBarClick = (data) => {
+    if (data && data.activePayload && data.activePayload[0]) {
+      const clickedBar = data.activePayload[0].payload;
+      setSelectedBarData(clickedBar);
+      setOpenBarDetails(true);
+    }
+  };
+
+  // Calculate service distribution for the clicked bar
+  const getBarServiceDistribution = () => {
+    if (!selectedBarData || !selectedBarData.appointments) return [];
+    
+    const serviceDistribution = selectedBarData.appointments.reduce((acc, appointment) => {
+      let serviceName = 'Unknown Service';
+      
+      if (appointment.serviceType && appointment.serviceType.title) {
+        serviceName = appointment.serviceType.title;
+      } else if (appointment.serviceType) {
+        serviceName = `Service ID: ${appointment.serviceType}`;
+      }
+      
+      acc[serviceName] = (acc[serviceName] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(serviceDistribution).map(([name, value]) => ({
+      name,
+      value,
+      percentage: selectedBarData.appointments.length > 0 
+        ? (value / selectedBarData.appointments.length * 100).toFixed(1) 
+        : '0'
+    }));
   };
 
   if (isLoading) {
@@ -462,6 +518,7 @@ const AppointmentAnalytics = () => {
                 left: 20,
                 bottom: 5,
               }}
+              onClick={handleBarClick}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
@@ -476,6 +533,87 @@ const AppointmentAnalytics = () => {
             </BarChart>
           </ResponsiveContainer>
         </Paper>
+
+        {/* Bar Details Modal */}
+        <Dialog
+          open={openBarDetails}
+          onClose={() => setOpenBarDetails(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            Appointment Details for {selectedBarData?.name}
+          </DialogTitle>
+          <DialogContent>
+            {selectedBarData && (
+              <>
+                <Typography variant="subtitle1" gutterBottom>
+                  Total Appointments: {selectedBarData.Appointments}
+                </Typography>
+                <Typography variant="subtitle1" gutterBottom>
+                  Time Period: {selectedBarData.start.format('MMM D, YYYY h:mm A')} - {selectedBarData.end.format('MMM D, YYYY h:mm A')}
+                </Typography>
+                
+                <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+                  Service Distribution
+                </Typography>
+                
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Service</TableCell>
+                        <TableCell align="right">Count</TableCell>
+                        <TableCell align="right">Percentage</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {getBarServiceDistribution().map((service, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            {service.name.startsWith('Service ID: ') ? (
+                              <ServiceName serviceId={service.name.replace('Service ID: ', '')} />
+                            ) : (
+                              service.name
+                            )}
+                          </TableCell>
+                          <TableCell align="right">{service.value}</TableCell>
+                          <TableCell align="right">{service.percentage}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                
+                <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
+                  Status Distribution
+                </Typography>
+                
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {selectedBarData.appointments && Object.entries(
+                    selectedBarData.appointments.reduce((acc, appointment) => {
+                      acc[appointment.status] = (acc[appointment.status] || 0) + 1;
+                      return acc;
+                    }, {})
+                  ).map(([status, count]) => (
+                    <Chip
+                      key={status}
+                      label={`${status}: ${count}`}
+                      color={
+                        status === "Completed" ? "success" :
+                        status === "Cancelled" ? "error" : 
+                        status === "No Arrival" ? "warning" : "default"
+                      }
+                    />
+                  ))}
+                </Box>
+              </>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenBarDetails(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
 
         <Paper elevation={3} sx={{ p: 3, mb: 4, height: 400 }}>
           <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -493,7 +631,6 @@ const AppointmentAnalytics = () => {
                   fill="#8884d8"
                   dataKey="value"
                   label={({ name, percentage }) => {
-                    // If name starts with "Service ID:", fetch the actual service name
                     if (name.startsWith('Service ID: ')) {
                       const serviceId = name.replace('Service ID: ', '');
                       return <ServiceName serviceId={serviceId} />;
