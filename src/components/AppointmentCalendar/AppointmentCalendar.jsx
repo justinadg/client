@@ -13,23 +13,24 @@ AppointmentCalendar.propTypes = {
   serviceCategory: PropTypes.string,
 };
 
-const slots = [];
-// Generate time slots from 7:00 to 18:30 in 30-minute increments
-for (let hour = 7; hour <= 18; hour++) {
-  for (let minute = 0; minute <= 30; minute += 30) {
-    slots.push(
-      `${hour.toString().padStart(2, "0")}:${minute
-        .toString()
-        .padStart(2, "0")}`
-    );
-  }
-}
+const slots = [
+  "7:00 - 8:15",
+  "8:15 - 9:30",
+  "9:30 - 10:45",
+  "10:45 - 12:00",
+  "12:00 - 13:15",
+  "13:15 - 14:30",
+  "14:30 - 15:45",
+  "15:45 - 17:00",
+  "17:00 - 18:15"
+];
 
 const isSlotBooked = (time, appointments, selectedDay, serviceCategory) => {
+  const [startTime] = time.split(" - ");
   return appointments.some(
     (appt) =>
       dayjs(appt.appointmentDateTime).isSame(
-        dayjs(selectedDay).hour(time.split(":")[0]).minute(time.split(":")[1]),
+        dayjs(selectedDay).hour(startTime.split(":")[0]).minute(startTime.split(":")[1]),
         "minute"
       ) &&
       appt.status !== "Cancelled" &&
@@ -38,9 +39,10 @@ const isSlotBooked = (time, appointments, selectedDay, serviceCategory) => {
 };
 
 const isSlotInPast = (time, selectedDay) => {
+  const [startTime] = time.split(" - ");
   const slotDateTime = dayjs(selectedDay)
-    .hour(time.split(":")[0])
-    .minute(time.split(":")[1]);
+    .hour(startTime.split(":")[0])
+    .minute(startTime.split(":")[1]);
   return slotDateTime.isBefore(dayjs());
 };
 
@@ -81,10 +83,11 @@ export default function AppointmentCalendar({
       !isSlotInPast(time, selectedDay)
     ) {
       setSelectedSlot(time);
+      const [startTime] = time.split(" - ");
       onSlotSelect(
         dayjs(selectedDay)
-          .hour(time.split(":")[0])
-          .minute(time.split(":")[1])
+          .hour(startTime.split(":")[0])
+          .minute(startTime.split(":")[1])
           .toISOString()
       );
     }
