@@ -20,11 +20,8 @@ import {
   DialogActions,
   Button,
   Chip,
-  Alert,
-  IconButton,
 } from '@mui/material';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -45,7 +42,6 @@ import advancedFormat from 'dayjs/plugin/advancedFormat';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import { useFetchAllAppointmentsQuery } from '../../services/api/appointmentsApi';
 import { useFetchServiceByIdQuery } from '../../services/api/servicesApi';
-import { openai } from '../../services/api/openaiApi';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
@@ -239,6 +235,30 @@ const formatDateRange = (timeRange, date, startDate, endDate) => {
   }
 };
 
+const generateMetricInsight = (metric, currentValue, comparisonValue, percentageChange) => {
+  if (currentValue === 0 && comparisonValue === 0) {
+    return "No data in both periods";
+  }
+
+  if (currentValue === 0) {
+    return "No data in current period";
+  }
+
+  if (comparisonValue === 0) {
+    return "No data in comparison period";
+  }
+
+  const absChange = Math.abs(percentageChange);
+  if (absChange < 10) {
+    return "No significant change";
+  }
+
+  const direction = percentageChange > 0 ? 'increase' : 'decrease';
+  const metricName = metric === 'total' ? 'appointments' : metric.toLowerCase();
+  
+  return `${metricName} ${direction}d by ${absChange.toFixed(1)}%`;
+};
+
 const ServiceName = ({ serviceId }) => {
   const { data: service } = useFetchServiceByIdQuery(serviceId);
   return service ? service.title : `Service ID: ${serviceId}`;
@@ -259,11 +279,6 @@ const AppointmentAnalytics = () => {
   // Modal state for bar click
   const [selectedBarData, setSelectedBarData] = useState(null);
   const [openBarDetails, setOpenBarDetails] = useState(false);
-
-  // AI Insights state
-  const [aiInsights, setAiInsights] = useState({});
-  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const [insightError, setInsightError] = useState(null);
 
   const { data: allAppointments = { results: [] }, isLoading } = useFetchAllAppointmentsQuery({
     limit: 10000,
@@ -312,84 +327,12 @@ const AppointmentAnalytics = () => {
     ),
   };
 
-  // Generate AI insights for each metric
-  const generateAiInsights = async () => {
-    setIsGeneratingInsights(true);
-    setInsightError(null);
-    
-    try {
-      const insights = {};
-      
-      // Prepare data for AI analysis
-      const analysisData = {
-        currentPeriod: {
-          total: currentStats.total,
-          completed: currentStats.statusCounts['Completed'] || 0,
-          noArrival: currentStats.statusCounts['No Arrival'] || 0,
-          cancelled: currentStats.statusCounts['Cancelled'] || 0,
-          serviceDistribution: currentStats.serviceDistribution,
-          dateRange: formatDateRange(timeRange, customDate, customStartDate, customEndDate)
-        },
-        comparisonPeriod: {
-          total: comparisonStats.total,
-          completed: comparisonStats.statusCounts['Completed'] || 0,
-          noArrival: comparisonStats.statusCounts['No Arrival'] || 0,
-          cancelled: comparisonStats.statusCounts['Cancelled'] || 0,
-          dateRange: formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)
-        },
-        percentageChanges
-      };
-      
-      // Generate insights for each metric using OpenAI
-      const metrics = ['total', 'completed', 'noArrival', 'cancelled'];
-      
-      for (const metric of metrics) {
-        const prompt = `
-          Analyze the following appointment data for a business and provide a concise insight (max 2 sentences) about what happened, why it might have happened, and what action to take.
-          
-          Metric: ${metric}
-          Current Period (${analysisData.currentPeriod.dateRange}): ${analysisData.currentPeriod[metric]}
-          Comparison Period (${analysisData.comparisonPeriod.dateRange}): ${analysisData.comparisonPeriod[metric]}
-          Change: ${percentageChanges[metric].toFixed(1)}%
-          
-          Provide your response in this exact format:
-          What happened: [description]
-          Why it might have happened: [explanation]
-          What to do: [recommendation]
-        `;
-        
-        try {
-          const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content: "You are a business analytics assistant that provides concise, actionable insights about appointment data."
-              },
-              {
-                role: "user",
-                content: prompt
-              }
-            ],
-            max_tokens: 150,
-            temperature: 0.7,
-          });
-          
-          const insightText = response.choices[0].message.content;
-          insights[metric] = insightText;
-        } catch (error) {
-          console.error(`Error generating insight for ${metric}:`, error);
-          insights[metric] = "Unable to generate insight at this time. Please try again later.";
-        }
-      }
-      
-      setAiInsights(insights);
-    } catch (error) {
-      console.error("Error generating AI insights:", error);
-      setInsightError("Failed to generate insights. Please check your OpenAI API key and try again.");
-    } finally {
-      setIsGeneratingInsights(false);
-    }
+  // Generate insights for each metric
+  const metricInsights = {
+    total: generateMetricInsight('total', currentStats.total, comparisonStats.total, percentageChanges.total),
+    completed: generateMetricInsight('completed', currentStats.statusCounts['Completed'] || 0, comparisonStats.statusCounts['Completed'] || 0, percentageChanges.completed),
+    noArrival: generateMetricInsight('noArrival', currentStats.statusCounts['No Arrival'] || 0, comparisonStats.statusCounts['No Arrival'] || 0, percentageChanges.noArrival),
+    cancelled: generateMetricInsight('cancelled', currentStats.statusCounts['Cancelled'] || 0, comparisonStats.statusCounts['Cancelled'] || 0, percentageChanges.cancelled),
   };
 
   // Handle bar click
@@ -434,28 +377,28 @@ const AppointmentAnalytics = () => {
       current: currentStats.total,
       comparison: comparisonStats.total,
       change: percentageChanges.total,
-      insightKey: 'total'
+      insight: metricInsights.total
     },
     {
       name: 'Completed',
       current: currentStats.statusCounts['Completed'] || 0,
       comparison: comparisonStats.statusCounts['Completed'] || 0,
       change: percentageChanges.completed,
-      insightKey: 'completed'
+      insight: metricInsights.completed
     },
     {
       name: 'No Arrival',
       current: currentStats.statusCounts['No Arrival'] || 0,
       comparison: comparisonStats.statusCounts['No Arrival'] || 0,
       change: percentageChanges.noArrival,
-      insightKey: 'noArrival'
+      insight: metricInsights.noArrival
     },
     {
       name: 'Cancelled',
       current: currentStats.statusCounts['Cancelled'] || 0,
       comparison: comparisonStats.statusCounts['Cancelled'] || 0,
       change: percentageChanges.cancelled,
-      insightKey: 'cancelled'
+      insight: metricInsights.cancelled
     }
   ];
 
@@ -703,25 +646,9 @@ const AppointmentAnalytics = () => {
 
         {/* Comparison Analytics Bar Chart */}
         <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h5" gutterBottom>
-              Comparison Analytics
-            </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={generateAiInsights}
-              disabled={isGeneratingInsights}
-            >
-              {isGeneratingInsights ? 'Generating Insights...' : 'Generate AI Insights'}
-            </Button>
-          </Box>
-          
-          {insightError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {insightError}
-            </Alert>
-          )}
+          <Typography variant="h5" gutterBottom>
+            Comparison Analytics
+          </Typography>
           
           <Box sx={{ mb: 3 }}>
             <Tabs 
@@ -813,42 +740,30 @@ const AppointmentAnalytics = () => {
 
           {/* Insights Table */}
           <Typography variant="h6" gutterBottom>
-            AI-Generated Insights
+            Insights
           </Typography>
-          {isGeneratingInsights ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Metric</TableCell>
-                    <TableCell>Change (%)</TableCell>
-                    <TableCell>Insight</TableCell>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Metric</TableCell>
+                  <TableCell>Change (%)</TableCell>
+                  <TableCell>Insight</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {comparisonChartData.map((row, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell sx={{ color: row.change >= 0 ? 'success.main' : 'error.main' }}>
+                      {row.change.toFixed(1)}%
+                    </TableCell>
+                    <TableCell>{row.insight}</TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {comparisonChartData.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell sx={{ color: row.change >= 0 ? 'success.main' : 'error.main' }}>
-                        {row.change.toFixed(1)}%
-                      </TableCell>
-                      <TableCell>
-                        {aiInsights[row.insightKey] || (
-                          <Typography variant="body2" color="text.secondary">
-                            Click "Generate AI Insights" to get analysis
-                          </Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       </Box>
     </LocalizationProvider>
