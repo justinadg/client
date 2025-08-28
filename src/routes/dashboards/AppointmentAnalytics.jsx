@@ -373,6 +373,38 @@ const AppointmentAnalytics = () => {
     }));
   };
 
+  // Prepare comparison chart data
+  const comparisonChartData = [
+    {
+      name: 'Total Appointments',
+      current: currentStats.total,
+      comparison: comparisonStats.total,
+      change: percentageChanges.total,
+      insight: metricInsights.total
+    },
+    {
+      name: 'Completed',
+      current: currentStats.statusCounts['Completed'] || 0,
+      comparison: comparisonStats.statusCounts['Completed'] || 0,
+      change: percentageChanges.completed,
+      insight: metricInsights.completed
+    },
+    {
+      name: 'No Arrival',
+      current: currentStats.statusCounts['No Arrival'] || 0,
+      comparison: comparisonStats.statusCounts['No Arrival'] || 0,
+      change: percentageChanges.noArrival,
+      insight: metricInsights.noArrival
+    },
+    {
+      name: 'Cancelled',
+      current: currentStats.statusCounts['Cancelled'] || 0,
+      comparison: comparisonStats.statusCounts['Cancelled'] || 0,
+      change: percentageChanges.cancelled,
+      insight: metricInsights.cancelled
+    }
+  ];
+
   if (isLoading) {
     return <CircularProgress disableShrink />;
   }
@@ -660,7 +692,7 @@ const AppointmentAnalytics = () => {
           )}
         </Paper>
 
-        {/* Comparison Analytics Table */}
+        {/* Comparison Analytics Bar Chart */}
         <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
           <Typography variant="h5" gutterBottom>
             Comparison Analytics
@@ -721,64 +753,62 @@ const AppointmentAnalytics = () => {
             </Box>
           </Box>
 
+          <Box sx={{ height: 400, mb: 3 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={comparisonChartData}
+                margin={{
+                  top: 20,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value, name) => [`${value} appointments`, name === 'current' ? 'Current Period' : 'Comparison Period']}
+                  labelFormatter={(label) => label}
+                />
+                <Legend />
+                <Bar 
+                  dataKey="current" 
+                  fill="#8884d8" 
+                  name={`Current Period (${formatDateRange(timeRange, customDate, customStartDate, customEndDate)})`}
+                />
+                <Bar 
+                  dataKey="comparison" 
+                  fill="#82ca9d" 
+                  name={`Comparison Period (${formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)})`}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </Box>
+
+          {/* Insights Table */}
+          <Typography variant="h6" gutterBottom>
+            Insights
+          </Typography>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell>Metric</TableCell>
-                  <TableCell>
-                    Current Period
-                    <Typography variant="caption" display="block">
-                      {formatDateRange(timeRange, customDate, customStartDate, customEndDate)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    Comparison Period
-                    <Typography variant="caption" display="block">
-                      {formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)}
-                    </Typography>
-                  </TableCell>
                   <TableCell>Change (%)</TableCell>
                   <TableCell>Insight</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                <TableRow>
-                  <TableCell>Total Appointments</TableCell>
-                  <TableCell>{currentStats.total}</TableCell>
-                  <TableCell>{comparisonStats.total}</TableCell>
-                  <TableCell sx={{ color: percentageChanges.total >= 0 ? 'success.main' : 'error.main' }}>
-                    {percentageChanges.total.toFixed(1)}%
-                  </TableCell>
-                  <TableCell>{metricInsights.total}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Completed</TableCell>
-                  <TableCell>{currentStats.statusCounts['Completed'] || 0}</TableCell>
-                  <TableCell>{comparisonStats.statusCounts['Completed'] || 0}</TableCell>
-                  <TableCell sx={{ color: percentageChanges.completed >= 0 ? 'success.main' : 'error.main' }}>
-                    {percentageChanges.completed.toFixed(1)}%
-                  </TableCell>
-                  <TableCell>{metricInsights.completed}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>No Arrival</TableCell>
-                  <TableCell>{currentStats.statusCounts['No Arrival'] || 0}</TableCell>
-                  <TableCell>{comparisonStats.statusCounts['No Arrival'] || 0}</TableCell>
-                  <TableCell sx={{ color: percentageChanges.noArrival >= 0 ? 'error.main' : 'success.main' }}>
-                    {percentageChanges.noArrival.toFixed(1)}%
-                  </TableCell>
-                  <TableCell>{metricInsights.noArrival}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Cancelled</TableCell>
-                  <TableCell>{currentStats.statusCounts['Cancelled'] || 0}</TableCell>
-                  <TableCell>{comparisonStats.statusCounts['Cancelled'] || 0}</TableCell>
-                  <TableCell sx={{ color: percentageChanges.cancelled >= 0 ? 'error.main' : 'success.main' }}>
-                    {percentageChanges.cancelled.toFixed(1)}%
-                  </TableCell>
-                  <TableCell>{metricInsights.cancelled}</TableCell>
-                </TableRow>
+                {comparisonChartData.map((row, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell sx={{ color: row.change >= 0 ? 'success.main' : 'error.main' }}>
+                      {row.change.toFixed(1)}%
+                    </TableCell>
+                    <TableCell>{row.insight}</TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
