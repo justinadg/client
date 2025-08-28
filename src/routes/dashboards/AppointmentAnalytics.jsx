@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -45,6 +45,7 @@ import advancedFormat from 'dayjs/plugin/advancedFormat';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import { useFetchAllAppointmentsQuery } from '../../services/api/appointmentsApi';
 import { useFetchServiceByIdQuery } from '../../services/api/servicesApi';
+import OpenAI from 'openai';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
@@ -52,6 +53,12 @@ dayjs.extend(advancedFormat);
 dayjs.extend(weekOfYear);
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFA500'];
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true // Only for client-side demo, use server-side in production
+});
 
 const calculateStats = (timeRange, customDate, customStartDate, customEndDate, appointments) => {
   let startDate, endDate;
@@ -238,28 +245,33 @@ const formatDateRange = (timeRange, date, startDate, endDate) => {
   }
 };
 
-const generateMetricInsight = (metric, currentValue, comparisonValue, percentageChange) => {
-  if (currentValue === 0 && comparisonValue === 0) {
-    return "No data in both periods";
-  }
+const generateAIMetricInsight = async (metricData) => {
+  try {
+    const prompt = `
+      As a data analyst, provide a concise, insightful analysis of these appointment metrics:
+      
+      Metric: ${metricData.name}
+      Current Period Value: ${metricData.current}
+      Comparison Period Value: ${metricData.comparison}
+      Percentage Change: ${metricData.change.toFixed(1)}%
+      Time Range: ${metricData.timeRange}
+      Comparison Time Range: ${metricData.compareTimeRange}
+      
+      Provide a professional, data-driven insight (2-3 sentences max) that explains what this change means for the business.
+      Consider factors like seasonality, trends, and business implications.
+    `;
 
-  if (currentValue === 0) {
-    return "No data in current period";
-  }
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "gpt-3.5-turbo",
+      max_tokens: 100,
+    });
 
-  if (comparisonValue === 0) {
-    return "No data in comparison period";
+    return completion.choices[0]?.message?.content || "AI insight unavailable";
+  } catch (error) {
+    console.error("OpenAI API error:", error);
+    return "Unable to generate AI insight at this time";
   }
-
-  const absChange = Math.abs(percentageChange);
-  if (absChange < 10) {
-    return "No significant change";
-  }
-
-  const direction = percentageChange > 0 ? 'increase' : 'decrease';
-  const metricName = metric === 'total' ? 'appointments' : metric.toLowerCase();
-  
-  return `${metricName} ${direction}d by ${absChange.toFixed(1)}%`;
 };
 
 const ServiceName = ({ serviceId }) => {
@@ -282,6 +294,10 @@ const AppointmentAnalytics = () => {
   // Modal state for bar click
   const [selectedBarData, setSelectedBarData] = useState(null);
   const [openBarDetails, setOpenBarDetails] = useState(false);
+
+  // AI insights state
+  const [aiInsights, setAiInsights] = useState({});
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
 
   const { data: allAppointments = { results: [] }, isLoading } = useFetchAllAppointmentsQuery({
     limit: 10000,
@@ -330,13 +346,65 @@ const AppointmentAnalytics = () => {
     ),
   };
 
-  // Generate insights for each metric
-  const metricInsights = {
-    total: generateMetricInsight('total', currentStats.total, comparisonStats.total, percentageChanges.total),
-    completed: generateMetricInsight('completed', currentStats.statusCounts['Completed'] || 0, comparisonStats.statusCounts['Completed'] || 0, percentageChanges.completed),
-    noArrival: generateMetricInsight('noArrival', currentStats.statusCounts['No Arrival'] || 0, comparisonStats.statusCounts['No Arrival'] || 0, percentageChanges.noArrival),
-    cancelled: generateMetricInsight('cancelled', currentStats.statusCounts['Cancelled'] || 0, comparisonStats.statusCounts['Cancelled'] || 0, percentageChanges.cancelled),
-  };
+  // Prepare comparison chart data
+  const comparisonChartData = [
+    {
+      name: 'Total Appointments',
+      current: currentStats.total,
+      comparison: comparisonStats.total,
+      change: percentageChanges.total,
+      timeRange: formatDateRange(timeRange, customDate, customStartDate, customEndDate),
+      compareTimeRange: formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)
+    },
+    {
+      name: 'Completed',
+      current: currentStats.statusCounts['Completed'] || 0,
+      comparison: comparisonStats.statusCounts['Completed'] || 0,
+      change: percentageChanges.completed,
+      timeRange: formatDateRange(timeRange, customDate, customStartDate, customEndDate),
+      compareTimeRange: formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)
+    },
+    {
+      name: 'No Arrival',
+      current: currentStats.statusCounts['No Arrival'] || 0,
+      comparison: comparisonStats.statusCounts['No Arrival'] || 0,
+      change: percentageChanges.noArrival,
+      timeRange: formatDateRange(timeRange, customDate, customStartDate, customEndDate),
+      compareTimeRange: formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)
+    },
+    {
+      name: 'Cancelled',
+      current: currentStats.statusCounts['Cancelled'] || 0,
+      comparison: comparisonStats.statusCounts['Cancelled'] || 0,
+      change: percentageChanges.cancelled,
+      timeRange: formatDateRange(timeRange, customDate, customStartDate, customEndDate),
+      compareTimeRange: formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)
+    }
+  ];
+
+  // Generate AI insights when comparison data changes
+  useEffect(() => {
+    const generateInsights = async () => {
+      setIsGeneratingInsights(true);
+      const newInsights = {};
+      
+      for (const metric of comparisonChartData) {
+        try {
+          const insight = await generateAIMetricInsight(metric);
+          newInsights[metric.name] = insight;
+        } catch (error) {
+          newInsights[metric.name] = "Error generating insight";
+        }
+      }
+      
+      setAiInsights(newInsights);
+      setIsGeneratingInsights(false);
+    };
+
+    if (comparisonChartData.length > 0) {
+      generateInsights();
+    }
+  }, [comparisonChartData]);
 
   // Handle bar click
   const handleBarClick = (data) => {
@@ -372,38 +440,6 @@ const AppointmentAnalytics = () => {
         : '0'
     }));
   };
-
-  // Prepare comparison chart data
-  const comparisonChartData = [
-    {
-      name: 'Total Appointments',
-      current: currentStats.total,
-      comparison: comparisonStats.total,
-      change: percentageChanges.total,
-      insight: metricInsights.total
-    },
-    {
-      name: 'Completed',
-      current: currentStats.statusCounts['Completed'] || 0,
-      comparison: comparisonStats.statusCounts['Completed'] || 0,
-      change: percentageChanges.completed,
-      insight: metricInsights.completed
-    },
-    {
-      name: 'No Arrival',
-      current: currentStats.statusCounts['No Arrival'] || 0,
-      comparison: comparisonStats.statusCounts['No Arrival'] || 0,
-      change: percentageChanges.noArrival,
-      insight: metricInsights.noArrival
-    },
-    {
-      name: 'Cancelled',
-      current: currentStats.statusCounts['Cancelled'] || 0,
-      comparison: comparisonStats.statusCounts['Cancelled'] || 0,
-      change: percentageChanges.cancelled,
-      insight: metricInsights.cancelled
-    }
-  ];
 
   if (isLoading) {
     return <CircularProgress disableShrink />;
@@ -753,65 +789,80 @@ const AppointmentAnalytics = () => {
             </Box>
           </Box>
 
-          <Box sx={{ height: 400, mb: 3 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={comparisonChartData}
-                margin={{
-                  top: 20,
-                  right: 30,
-                  left: 20,
-                  bottom: 5,
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart
+              data={comparisonChartData}
+              margin={{
+                top: 20,
+                right: 30,
+                left: 20,
+                bottom: 5,
+              }}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip 
+                formatter={(value, name, props) => {
+                  if (name === 'current') return [`${value} (Current Period)`, ''];
+                  if (name === 'comparison') return [`${value} (Comparison Period)`, ''];
+                  return [value, name];
                 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value, name) => [`${value} appointments`, name === 'current' ? 'Current Period' : 'Comparison Period']}
-                  labelFormatter={(label) => label}
-                />
-                <Legend />
-                <Bar 
-                  dataKey="current" 
-                  fill="#8884d8" 
-                  name={`Current Period (${formatDateRange(timeRange, customDate, customStartDate, customEndDate)})`}
-                />
-                <Bar 
-                  dataKey="comparison" 
-                  fill="#82ca9d" 
-                  name={`Comparison Period (${formatDateRange(compareTimeRange, compareCustomDate, compareCustomStartDate, compareCustomEndDate)})`}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
+              />
+              <Legend />
+              <Bar 
+                dataKey="current" 
+                fill="#8884d8" 
+                name="Current Period"
+              />
+              <Bar 
+                dataKey="comparison" 
+                fill="#82ca9d" 
+                name="Comparison Period"
+              />
+            </BarChart>
+          </ResponsiveContainer>
 
-          {/* Insights Table */}
-          <Typography variant="h6" gutterBottom>
-            Insights
-          </Typography>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Metric</TableCell>
-                  <TableCell>Change (%)</TableCell>
-                  <TableCell>Insight</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {comparisonChartData.map((row, index) => (
-                  <TableRow key={index}>
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell sx={{ color: row.change >= 0 ? 'success.main' : 'error.main' }}>
-                      {row.change.toFixed(1)}%
-                    </TableCell>
-                    <TableCell>{row.insight}</TableCell>
-                  </TableRow>
+          {/* AI Insights Section */}
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              AI-Generated Insights
+            </Typography>
+            
+            {isGeneratingInsights ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <CircularProgress size={20} />
+                <Typography>Generating insights...</Typography>
+              </Box>
+            ) : (
+              <Grid container spacing={2}>
+                {comparisonChartData.map((metric, index) => (
+                  <Grid item xs={12} md={6} key={index}>
+                    <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        {metric.name}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="h6" sx={{ mr: 1 }}>
+                          {metric.current}
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          color={metric.change > 0 ? 'success.main' : metric.change < 0 ? 'error.main' : 'text.secondary'}
+                        >
+                          {metric.change > 0 ? '↑' : metric.change < 0 ? '↓' : '→'} 
+                          {Math.abs(metric.change).toFixed(1)}%
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {aiInsights[metric.name] || "No insight available"}
+                      </Typography>
+                    </Paper>
+                  </Grid>
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+              </Grid>
+            )}
+          </Box>
         </Paper>
       </Box>
     </LocalizationProvider>
